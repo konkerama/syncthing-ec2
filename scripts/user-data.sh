@@ -78,8 +78,9 @@ aws ssm put-parameter --name "/${RESOURCE_NAME}/${ENVIRONMENT}/device_info" --va
 
 # modify deviceID, name & autoAcceptFolders
 echo "Reading existing device name and id"
-EXTERNAL_DEVICE_ID="OF33D6H-IRS2J5A-SDGDSGI-7GHTX4F-TMS764K-NBH2RB4-KS3X3OE-TY7JNAL"
-EXTERNAL_DEVICE_NAME="thinkpad"
+EXTRENAL_DEVICE=$(aws ssm get-parameter --name /${RESOURCE_NAME}/${ENVIRONMENT}/local_device --with-decryption --query "Parameter.Value" --output text)
+EXTERNAL_DEVICE_ID=$(echo $EXTRENAL_DEVICE | jq .device_id --raw-output)
+EXTERNAL_DEVICE_NAME=$(echo $EXTRENAL_DEVICE | jq .device_name --raw-output)
 
 echo "Adding existing devices to config.json"
 jq '. + {deviceID:$device_id, name:$device_name, autoAcceptFolders:true}' device.json --arg device_id "${EXTERNAL_DEVICE_ID}" --arg device_name "${EXTERNAL_DEVICE_NAME}" > tmp.json && mv tmp.json device.json
