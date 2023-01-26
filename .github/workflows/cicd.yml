@@ -87,11 +87,11 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         role-to-assume: ${{secrets.IAMROLEARN}}
-        aws-region: ${{secrets.AWSRegion}}
+        aws-region: ${{secrets.AWSREGION}}
 
     # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
     - name: Deploy
-      run: ./deploy.sh -e dev -r ${{secrets.AWSRegion}}
+      run: ./deploy.sh -e dev -r ${{secrets.AWSREGION}}
 
   # deploy-prod:
   #   name: 'Deploy Prod'
