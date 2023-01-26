@@ -1,7 +1,7 @@
 module "ec2" {
   source        = "terraform-aws-modules/ec2-instance/aws"
   version       = "3.1.0"
-  name          = "${var.resource_name}-ec2"
+  name          = "${var.resource_name}-${var.environment}-ec2"
   ami           = data.aws_ami.amzlinux2.id
   instance_type = var.instance_type
 
@@ -21,7 +21,7 @@ module "ec2" {
 }
 
 resource "aws_iam_role" "ec2_iam_role" {
-  name = "${var.resource_name}-iam-role"
+  name = "${var.resource_name}-${var.environment}-iam-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -60,17 +60,17 @@ resource "aws_iam_role" "ec2_iam_role" {
 }
 
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
-  name = "${var.resource_name}-iam-instance-profile"
+  name = "${var.resource_name}-${var.environment}-iam-instance-profile"
   role = aws_iam_role.ec2_iam_role.name
 }
 
-# AWS EC2 Instance Terraform Outputs
-output "ec2_instance_id" {
-  description = "List of IDs of instances"
-  value       = module.ec2.id
-}
+# # AWS EC2 Instance Terraform Outputs
+# output "ec2_instance_id" {
+#   description = "List of IDs of instances"
+#   value       = module.ec2.id
+# }
 
-output "ec2_public_ip" {
-  description = "List of public IP addresses assigned to the instances"
-  value       = module.ec2.public_ip
-}
+# output "ec2_public_ip" {
+#   description = "List of public IP addresses assigned to the instances"
+#   value       = module.ec2.public_ip
+# }
