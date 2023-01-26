@@ -10,6 +10,7 @@ set -e
 
 cd terraform-manifests/
 # read terraform varialbes and set default environment variable (dev)
+# shellcheck disable=SC1091
 source ./vars/terraform.tfvars
 export TF_VAR_environment="dev"
 export TF_CLI_ARGS="-var-file=vars/terraform.tfvars"
