@@ -19,7 +19,7 @@ while getopts de:r: option
   do
   case "${option}" in
     e) export TF_VAR_environment=${OPTARG};;
-    r) TF_VAR_aws_region=${OPTARG};;
+    r) export TF_VAR_aws_region=${OPTARG};;
     d) DESTROY=true;;
     *) echo "usage: $0 [-e] [-r] [-d]" >&2
        exit 1 ;;
