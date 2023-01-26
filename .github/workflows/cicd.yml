@@ -45,11 +45,11 @@ jobs:
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - name: Terraform Init
-        working-directory: ./terraform-manifests
+        working-directory: terraform-manifests
         run: |
           terraform init -backend=false
       - name: Terraform Format
-        working-directory: ./terraform-manifests
+        working-directory: terraform-manifests
         run: terraform fmt -check
   
   deploy-dev:
