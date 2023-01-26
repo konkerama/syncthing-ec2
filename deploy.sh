@@ -27,7 +27,7 @@ done
 
 # read s3 bucket name (set in init.sh) and aws region
 TF_VAR_s3_bucket=$(aws ssm get-parameter --name "/${resource_name:?}/${TF_VAR_environment}/s3_bucket_name" --with-decryption --query "Parameter.Value" --output text)
-TF_VAR_aws_region=$(aws configure get region --profile default)
+# TF_VAR_aws_region=$(aws configure get region --profile default)
 
 # copy docker compose to s3
 aws s3 cp ./../scripts/docker-compose.yml "s3://${TF_VAR_s3_bucket}/artifacts/"
