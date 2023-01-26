@@ -36,6 +36,7 @@ terraform init -reconfigure -backend-config="bucket=${TF_VAR_s3_bucket}" -backen
 terraform plan
 
 # depending on input either create/update or destroy resources
+# shellcheck disable=SC2086
 if [ ${DESTROY} ] ; then
   echo "Destroying infrastructure"
   terraform destroy --auto-approve
