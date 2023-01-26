@@ -10,8 +10,9 @@ set -e
 
 cd terraform-manifests/
 # read terraform varialbes and set default environment variable (dev)
-source ./terraform.tfvars
+source ./vars/terraform.tfvars
 export TF_VAR_environment="dev"
+export TF_CLI_ARGS="-var-file=vars/terraform.tfvars"
 
 while getopts de: option
   do
@@ -30,7 +31,6 @@ aws s3 cp ./../scripts/docker-compose.yml s3://${TF_VAR_s3_bucket}/artifacts/
 
 # run terraform commands
 terraform init -reconfigure -backend-config="bucket=${TF_VAR_s3_bucket}" -backend-config="key=tfstate/${resource_name}/${TF_VAR_environment}/terraform.tfstate" -backend-config="region=${TF_VAR_aws_region}"
-terraform validate
 terraform plan
 
 # depending on input either create/update or destroy resources

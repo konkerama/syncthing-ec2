@@ -54,7 +54,10 @@ jobs:
       - name: Terraform Format
         working-directory: terraform-manifests
         run: terraform fmt -check
-  
+      - name: Terraform Format
+        working-directory: terraform-manifests
+        run: terraform validate
+
   deploy-dev:
     name: 'Deploy Dev'
     runs-on: ubuntu-latest
