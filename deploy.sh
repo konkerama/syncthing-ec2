@@ -15,12 +15,13 @@ source ./vars/terraform.tfvars
 export TF_VAR_environment="dev"
 export TF_CLI_ARGS="-var-file=vars/terraform.tfvars"
 
-while getopts de: option
+while getopts de:r: option
   do
   case "${option}" in
     e) export TF_VAR_environment=${OPTARG};;
+    r) TF_VAR_aws_region=${OPTARG};;
     d) DESTROY=true;;
-    *) echo "usage: $0 [-e] [-d]" >&2
+    *) echo "usage: $0 [-e] [-r] [-d]" >&2
        exit 1 ;;
   esac
 done
