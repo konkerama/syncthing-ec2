@@ -1,7 +1,7 @@
 module "ec2" {
   source        = "terraform-aws-modules/ec2-instance/aws"
   version       = "3.1.0"
-  name          = "${var.resource_name}-ec2"
+  name          = "${var.resource_name}-${var.envionment}-ec2"
   ami           = data.aws_ami.amzlinux2.id
   instance_type = var.instance_type
 
@@ -21,7 +21,7 @@ module "ec2" {
 }
 
 resource "aws_iam_role" "ec2_iam_role" {
-  name = "${var.resource_name}-iam-role"
+  name = "${var.resource_name}-${var.envionment}-iam-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -60,7 +60,7 @@ resource "aws_iam_role" "ec2_iam_role" {
 }
 
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
-  name = "${var.resource_name}-iam-instance-profile"
+  name = "${var.resource_name}-${var.envionment}-iam-instance-profile"
   role = aws_iam_role.ec2_iam_role.name
 }
 
