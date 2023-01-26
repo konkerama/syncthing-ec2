@@ -64,13 +64,13 @@ resource "aws_iam_instance_profile" "ec2_instance_profile" {
   role = aws_iam_role.ec2_iam_role.name
 }
 
-# AWS EC2 Instance Terraform Outputs
-output "ec2_instance_id" {
-  description = "List of IDs of instances"
-  value       = module.ec2.id
-}
+# # AWS EC2 Instance Terraform Outputs
+# output "ec2_instance_id" {
+#   description = "List of IDs of instances"
+#   value       = module.ec2.id
+# }
 
-output "ec2_public_ip" {
-  description = "List of public IP addresses assigned to the instances"
-  value       = module.ec2.public_ip
-}
+# output "ec2_public_ip" {
+#   description = "List of public IP addresses assigned to the instances"
+#   value       = module.ec2.public_ip
+# }
