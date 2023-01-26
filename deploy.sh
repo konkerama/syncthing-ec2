@@ -5,7 +5,7 @@ set -e
 #              In the case of Creating/Updating it will also print usefull information about the created instance (synthing id/name, public ip, syncthing gui url)
 #
 # Inputs:
-#   -e <value> : Specify the envionment name (used for naming convention). If not specified "dev" is used. 
+#   -e <value> : Specify the environment name (used for naming convention). If not specified "dev" is used. 
 #   -d         : (Optional) Performs terraform destroy to remove the infrastructure, if not defined a terraform apply is performed.
 
 cd terraform-manifests/
