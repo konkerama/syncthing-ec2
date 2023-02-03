@@ -44,6 +44,7 @@ terraform validate
 export TF_CLI_ARGS="-var-file=envs/${TF_VAR_environment}.tfvars"
 
 # depending on input either create/update or destroy resources
+# shellcheck disable=SC2086
 if [ ${DESTROY} ] ; then
   echo "Destroying infrastructure"
   terraform destroy --auto-approve
