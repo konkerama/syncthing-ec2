@@ -26,6 +26,7 @@ done
 source "./envs/${TF_VAR_environment}.tfvars"
 
 # read s3 bucket name (set in init.sh) and aws region
+# shellcheck disable=SC2154
 TF_VAR_s3_bucket=$(aws ssm get-parameter  --name "/${resource_name}/${TF_VAR_environment}/s3_bucket_name" \
                                           --with-decryption \
                                           --query "Parameter.Value" \
@@ -65,6 +66,8 @@ else
                                                     --with-decryption \
                                                     --query "Parameter.Value" \
                                                     --output text)
+
+  # shellcheck disable=SC2154
   if [ "$connect_to_tailscale" = "true" ]; then
     HOST_NAME=$resource_name-$TF_VAR_environment-ec2
   else

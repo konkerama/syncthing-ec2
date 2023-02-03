@@ -30,10 +30,11 @@ while getopts e:s:u:p:i:n:t: option
 done
 
 # shellcheck disable=SC1091,SC1090
-source ./terraform-manifests/envs/${TF_VAR_environment}.tfvars
+source "./terraform-manifests/envs/${TF_VAR_environment}.tfvars"
 
 if [ -n "$TF_VAR_s3_bucket" ]; then 
   echo "Creating S3 Bucket SSM Parameter"
+  # shellcheck disable=SC2154
   aws ssm put-parameter --name "/${resource_name}/${TF_VAR_environment}/s3_bucket_name" --value "${TF_VAR_s3_bucket}" --type SecureString --overwrite
 fi
 if [ -n "$SYNCTHING_USERNAME" ]; then 
