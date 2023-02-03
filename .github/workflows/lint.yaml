@@ -1,0 +1,59 @@
+name: 'lint'
+
+on:
+  # push:
+  #   branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-bash:
+    name: Lint Bash scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - uses: reviewdog/action-shellcheck@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-review
+          level: warning
+          path: .
+          pattern: '*.sh'
+          fail_on_error: true
+
+  # lint-dockerfile:
+  #   name: Lint Dockerfiles
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: hadolint
+  #       uses: reviewdog/action-hadolint@v1
+  #       with:
+  #         reporter: github-pr-review
+  #         level: warning
+  #         fail_on_error: true
+  #         hadolint_ignore: DL3016 DL3018 # Ignore pinning apk and npm packages to specific version with @
+
+  terraform-format:
+    name: Check Terraform Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      - name: Terraform Init
+        working-directory: terraform-manifests
+        run: terraform init -backend=false
+      - name: Terraform Format
+        working-directory: terraform-manifests
+        run: terraform fmt -check
+      - name: Terraform Format
+        working-directory: terraform-manifests
+        run: terraform validate
+

@@ -38,3 +38,15 @@ variable "connect_to_instance" {
   default     = true
 }
 
+variable "create_syncthing_config" {
+  description = "Create a new syncthing instance configuration, if set to false the configuration will be take from AWS SSM and S3. See README.md for more info"
+  type        = bool
+  default     = false
+}
+
+variable "connect_to_tailscale" {
+  description = "Run the necessary commands in the EC2 Instance to connect to the Tailscale Network. See README.md for more info"
+  type        = bool
+  default     = true
+}
+

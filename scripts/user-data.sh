@@ -8,35 +8,89 @@
 #                - Set up of GUI username/password using information present in SSM Parameter Store
 #                - Retrieval of usefull information (Synching device id & name)
 #                - Set up pairing with existing local synthing device
+#                - (Optional) If selected add EC2 to the Tailscale Network
+#                - (Optional) If selected reuse existing synchting configuration
 
-# install docker & docker-compose
+# install docker
 sudo yum update -y  
 sudo yum install -y docker
 sudo yum install -y jq
 sudo systemctl enable docker
 sudo systemctl start docker
 
-sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
 # set aws cli region
+# shellcheck disable=SC2046
 aws configure set region $(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
 
 # get instance id
 INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-INSTANCE_PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
 
-# get s3_bucket resource_name & environment
-RESOURCE_NAME=$(aws ec2 describe-instances --instance-ids ${INSTANCE_ID} --query "Reservations[0].Instances[0].Tags[?Key=='resource_name'].Value" --output text)
-ENVIRONMENT=$(aws ec2 describe-instances --instance-ids ${INSTANCE_ID} --query "Reservations[0].Instances[0].Tags[?Key=='environment'].Value" --output text)
+# get EC2 information
+RESOURCE_NAME=$(aws ec2 describe-instances  --instance-ids "${INSTANCE_ID}" \
+                                            --query "Reservations[0].Instances[0].Tags[?Key=='resource_name'].Value" \
+                                            --output text)
+ENVIRONMENT=$(aws ec2 describe-instances    --instance-ids "${INSTANCE_ID}" \
+                                            --query "Reservations[0].Instances[0].Tags[?Key=='environment'].Value" \
+                                            --output text)
+CREATE_CONFIG=$(aws ec2 describe-instances  --instance-ids "${INSTANCE_ID}" \
+                                            --query "Reservations[0].Instances[0].Tags[?Key=='create_syncthing_config'].Value" \
+                                            --output text)
+CONNECT_TO_TAILSCALE=$(aws ec2 describe-instances   --instance-ids "${INSTANCE_ID}" \
+                                                    --query "Reservations[0].Instances[0].Tags[?Key=='connect_to_tailscale'].Value" \
+                                                    --output text)
+INSTANCE_NAME=$(aws ec2 describe-instances  --instance-ids "${INSTANCE_ID}" \
+                                            --query "Reservations[0].Instances[0].Tags[?Key=='Name'].Value" \
+                                            --output text)
 
-S3_BUCKET_NAME=$(aws ssm get-parameter --name /${RESOURCE_NAME}/${ENVIRONMENT}/s3_bucket_name --with-decryption --query "Parameter.Value" --output text)
+# Connect to tailscale
+if [ "$CONNECT_TO_TAILSCALE" = "true" ]; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+    systemctl enable --now tailscaled
+    INSTANCE_ENDPOINT="$INSTANCE_NAME"
+    TAILSCALE_TOKEN=$(aws ssm get-parameter --name "/${RESOURCE_NAME}/${ENVIRONMENT}/tailscale/token" \
+                                            --with-decryption \
+                                            --query "Parameter.Value" \
+                                            --output text)
 
-# copy docker compose to working directory
-aws s3 cp s3://${S3_BUCKET_NAME}/artifacts/docker-compose.yml .
+    sudo tailscale up --hostname="$INSTANCE_ENDPOINT" --authkey="${TAILSCALE_TOKEN}" --ssh
+else 
+    INSTANCE_ENDPOINT=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+
+fi
 
 # run container
-docker-compose up -d
+mkdir /data/st-sync/config -p
+chown 1000:1000 /data/st-sync/ -R
+
+if [ "$CREATE_CONFIG" = "false" ]; then
+    echo "Grabbing config from ssm and s3"
+    S3_BUCKET_NAME=$(aws ssm get-parameter  --name "/${RESOURCE_NAME}/${ENVIRONMENT}/s3_bucket_name" \
+                                        --with-decryption \
+                                        --query "Parameter.Value" \
+                                        --output text)
+    aws ssm get-parameter   --name "/${RESOURCE_NAME}/${ENVIRONMENT}/config/cert.pem" \
+                            --with-decryption \
+                            --query "Parameter.Value" \
+                            --output text > /data/st-sync/config/cert.pem
+    aws ssm get-parameter   --name "/${RESOURCE_NAME}/${ENVIRONMENT}/config/key.pem" \
+                            --with-decryption \
+                            --query "Parameter.Value" \
+                            --output text > /data/st-sync/config/key.pem
+    aws s3 cp "s3://${S3_BUCKET_NAME}/artifacts/${ENVIRONMENT}/config.xml" /data/st-sync/config/config.xml
+fi
+
+docker run -d   --name syncthing \
+                -h "$HOST_NAME" \
+                -p 8384:8384 -p 22000:22000/tcp -p 22000:22000/udp \
+                -v /data/st-sync:/var/syncthing \
+                -e PUID=1000 \
+                -e PGID=1000 \
+                --restart unless-stopped \
+                --log-driver=awslogs \
+                --log-opt awslogs-region=eu-west-1 \
+                --log-opt awslogs-group="/aws/ec2/$RESOURCE_NAME/$ENVIRONMENT" \
+                --log-opt awslogs-multiline-pattern='^(INFO|DEBUG|WARN|ERROR|CRITICAL)' \
+                syncthing/syncthing 
 
 echo "Sleeping for 5 seconds to allow the container to be configured..." && sleep 5
 
@@ -44,50 +98,100 @@ echo "Retrieve Syncthing API Key"
 XML_FILE="/data/st-sync/config/config.xml"
 SYNCTHING_API_KEY=$(xmllint --xpath 'string(/configuration/gui/apikey)' $XML_FILE)
 
-echo "Put Syncthing API Key on SMM Parameter Store, Parameter Name: /${RESOURCE_NAME}/${ENVIRONMENT}/api_key"
-aws ssm put-parameter --name "/${RESOURCE_NAME}/${ENVIRONMENT}/api_key" --value ${SYNCTHING_API_KEY} --type SecureString --overwrite
+if [ "$CREATE_CONFIG" = "true" ]; then
+    USERNAME=$(aws ssm get-parameter    --name "/${RESOURCE_NAME}/${ENVIRONMENT}/gui/username" \
+                                        --with-decryption \
+                                        --query "Parameter.Value" \
+                                        --output text)
 
-echo "--Updating Syncthing GUI username and password--"
-echo "Reading Syncthing username and password from SSM Parameter Store"
-USERNAME=$(aws ssm get-parameter --name /${RESOURCE_NAME}/${ENVIRONMENT}/gui/username --with-decryption --query "Parameter.Value" --output text)
-PASSWORD=$(aws ssm get-parameter --name /${RESOURCE_NAME}/${ENVIRONMENT}/gui/password --with-decryption --query "Parameter.Value" --output text)
+    echo "Put Syncthing API Key on SMM Parameter Store, Parameter Name: /${RESOURCE_NAME}/${ENVIRONMENT}/api_key"
+    aws ssm put-parameter   --name "/${RESOURCE_NAME}/${ENVIRONMENT}/api_key" \
+                            --value "${SYNCTHING_API_KEY}" \
+                            --type SecureString \
+                            --overwrite
 
-echo "Retrieving current Syncthing config"
-curl -s -H "X-API-Key: ${SYNCTHING_API_KEY}" localhost:8384/rest/config > config.json
+    echo "--Updating Syncthing GUI username and password--"
+    echo "Reading Syncthing username and password from SSM Parameter Store"
+    USERNAME=$(aws ssm get-parameter    --name "/${RESOURCE_NAME}/${ENVIRONMENT}/gui/username" \
+                                        --with-decryption \
+                                        --query "Parameter.Value" \
+                                        --output text)
+    PASSWORD=$(aws ssm get-parameter    --name "/${RESOURCE_NAME}/${ENVIRONMENT}/gui/password" \
+                                        --with-decryption \
+                                        --query "Parameter.Value" \
+                                        --output text)
 
-echo "Modifying the username and password json fields"
-jq '.gui.user = $username' config.json --arg username "${USERNAME}" > tmp.json && mv tmp.json config.json
-jq '.gui.password = $password' config.json --arg password "${PASSWORD}" > tmp.json && mv tmp.json config.json
+    echo "Retrieving current Syncthing config"
+    curl -s localhost:8384/rest/config \
+            -H "X-API-Key: ${SYNCTHING_API_KEY}" > config.json
 
-echo "Pushing new Syncthing config"
-curl -s -w "%{http_code}\n" -X PUT -H "X-API-Key: ${SYNCTHING_API_KEY}" localhost:8384/rest/config -H "Content-Type: application/json" -d @config.json
-rm config.json
+    echo "Modifying the username and password json fields"
+    jq '.gui.user = $username' config.json \
+        --arg username "${USERNAME}" > tmp.json && mv tmp.json config.json
+    jq '.gui.password = $password' config.json \
+        --arg password "${PASSWORD}" > tmp.json && mv tmp.json config.json
 
-echo "Identifying if restart is required"
-curl -s -H "X-API-Key: ${SYNCTHING_API_KEY}" localhost:8384/rest/config/restart-required
+    echo "Pushing new Syncthing config"
+    curl -s localhost:8384/rest/config \
+        -X PUT \
+        -w "%{http_code}\n" \
+        -H "X-API-Key: ${SYNCTHING_API_KEY}"  \
+        -H "Content-Type: application/json" \
+        -d @config.json
+    
+    rm config.json
 
-echo "-- Adding Current Devices --"
-echo "Retrieving current Syncthing config"
-curl -s -H "X-API-Key: ${SYNCTHING_API_KEY}" localhost:8384/rest/config > config.json
+    echo "Identifying if restart is required"
+    curl -s localhost:8384/rest/config/restart-required \
+            -H "X-API-Key: ${SYNCTHING_API_KEY}" 
+
+    echo "-- Adding Current Devices --"
+    echo "Retrieving current Syncthing config"
+    curl -s localhost:8384/rest/config \
+            -H "X-API-Key: ${SYNCTHING_API_KEY}" > config.json
+
+    # echo "Extracting local device info and pushing it to SSM Parameter Store, Parameter Name: /${RESOURCE_NAME}/${ENVIRONMENT}/device_info"
+    jq '.devices[0]' config.json > device.json
+
+    # modify deviceID, name & autoAcceptFolders
+    echo "Reading existing device name and id"
+    EXTRENAL_DEVICE=$(aws ssm get-parameter --name "/${RESOURCE_NAME}/${ENVIRONMENT}/local_device" \
+                                            --with-decryption \
+                                            --query "Parameter.Value" \
+                                            --output text)
+    EXTERNAL_DEVICE_ID=$(echo "$EXTRENAL_DEVICE" | jq .device_id --raw-output)
+    EXTERNAL_DEVICE_NAME=$(echo "$EXTRENAL_DEVICE" | jq .device_name --raw-output)
+
+    echo "Adding existing devices to config.json"
+    jq '. + {deviceID:$device_id, name:$device_name, autoAcceptFolders:true}' device.json \
+        --arg device_id "${EXTERNAL_DEVICE_ID}" \
+        --arg device_name "${EXTERNAL_DEVICE_NAME}" > tmp.json && mv tmp.json device.json
+    jq --argjson device "$(<device.json)" '.devices += [$device]' config.json > tmp.json && mv tmp.json config.json
+
+    echo "Pushing new Syncthing config"
+    curl -s localhost:8384/rest/config \
+            -X PUT \
+            -w "%{http_code}\n" \
+            -H "X-API-Key: ${SYNCTHING_API_KEY}"  \
+            -H "Content-Type: application/json" \
+            -d @config.json
+
+    echo "Identifying if restart is required"
+    curl -s localhost:8384/rest/config/restart-required \
+            -H "X-API-Key: ${SYNCTHING_API_KEY}" 
+fi
 
 echo "Extracting local device info and pushing it to SSM Parameter Store, Parameter Name: /${RESOURCE_NAME}/${ENVIRONMENT}/device_info"
-jq '.devices[0]' config.json > device.json
-jq 'with_entries(select([.key] | inside(["deviceID", "name"])))' device.json > device-info.json
-DEVICE_INFO=$(jq '. += { "public_ip": $public_ip }' --arg public_ip "${INSTANCE_PUBLIC_IP}" device-info.json)
-aws ssm put-parameter --name "/${RESOURCE_NAME}/${ENVIRONMENT}/device_info" --value "${DEVICE_INFO}" --type SecureString --overwrite
+DEVICE_ID=$(curl -s localhost:8384/rest/system/status \
+                    -H "X-API-Key: ${SYNCTHING_API_KEY}" | jq .myID --raw-output)
 
-# modify deviceID, name & autoAcceptFolders
-echo "Reading existing device name and id"
-EXTRENAL_DEVICE=$(aws ssm get-parameter --name /${RESOURCE_NAME}/${ENVIRONMENT}/local_device --with-decryption --query "Parameter.Value" --output text)
-EXTERNAL_DEVICE_ID=$(echo $EXTRENAL_DEVICE | jq .device_id --raw-output)
-EXTERNAL_DEVICE_NAME=$(echo $EXTRENAL_DEVICE | jq .device_name --raw-output)
+DEVICE_INFO=$(jq    --null-input \
+                    --arg deviceID "$DEVICE_ID" \
+                    --arg name "$INSTANCE_NAME" \
+                    --arg endpoint "$INSTANCE_ENDPOINT" \
+                    '{"deviceID": $deviceID, "name": $name, "endpoint": $endpoint}')
 
-echo "Adding existing devices to config.json"
-jq '. + {deviceID:$device_id, name:$device_name, autoAcceptFolders:true}' device.json --arg device_id "${EXTERNAL_DEVICE_ID}" --arg device_name "${EXTERNAL_DEVICE_NAME}" > tmp.json && mv tmp.json device.json
-jq --argjson device "$(<device.json)" '.devices += [$device]' config.json > tmp.json && mv tmp.json config.json
-
-echo "Pushing new Syncthing config"
-curl -s -w "%{http_code}\n" -X PUT -H "X-API-Key: ${SYNCTHING_API_KEY}" localhost:8384/rest/config -H "Content-Type: application/json" -d @config.json
-
-echo "Identifying if restart is required"
-curl -s -H "X-API-Key: ${SYNCTHING_API_KEY}" localhost:8384/rest/config/restart-required
+aws ssm put-parameter   --name "/${RESOURCE_NAME}/${ENVIRONMENT}/device_info" \
+                        --value "${DEVICE_INFO}" \
+                        --type SecureString \
+                        --overwrite
