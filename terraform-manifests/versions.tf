@@ -23,6 +23,7 @@ provider "aws" {
     tags = {
       environment   = var.environment
       resource_name = var.resource_name
+      region        = var.aws_region
     }
   }
 }
