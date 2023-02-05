@@ -18,9 +18,18 @@ sudo yum install -y jq
 sudo systemctl enable docker
 sudo systemctl start docker
 
+
+DOCKER_CLI_PLUGINS_DIR=/usr/local/lib/docker/cli-plugins
+sudo mkdir -p $DOCKER_CLI_PLUGINS_DIR/
+sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-armv7 -o $DOCKER_CLI_PLUGINS_DIR/docker-compose
+sudo chmod +x $DOCKER_CLI_PLUGINS_DIR/docker-compose
+
+
 # set aws cli region
 # shellcheck disable=SC2046
-aws configure set region $(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+AWS_REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+export AWS_REGION
+aws configure set region "$AWS_REGION"
 
 # get instance id
 INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
@@ -29,18 +38,23 @@ INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.2
 RESOURCE_NAME=$(aws ec2 describe-instances  --instance-ids "${INSTANCE_ID}" \
                                             --query "Reservations[0].Instances[0].Tags[?Key=='resource_name'].Value" \
                                             --output text)
+export RESOURCE_NAME
 ENVIRONMENT=$(aws ec2 describe-instances    --instance-ids "${INSTANCE_ID}" \
                                             --query "Reservations[0].Instances[0].Tags[?Key=='environment'].Value" \
                                             --output text)
+export ENVIRONMENT
 CREATE_CONFIG=$(aws ec2 describe-instances  --instance-ids "${INSTANCE_ID}" \
                                             --query "Reservations[0].Instances[0].Tags[?Key=='create_syncthing_config'].Value" \
                                             --output text)
+export CREATE_CONFIG
 CONNECT_TO_TAILSCALE=$(aws ec2 describe-instances   --instance-ids "${INSTANCE_ID}" \
                                                     --query "Reservations[0].Instances[0].Tags[?Key=='connect_to_tailscale'].Value" \
                                                     --output text)
+export CONNECT_TO_TAILSCALE
 INSTANCE_NAME=$(aws ec2 describe-instances  --instance-ids "${INSTANCE_ID}" \
                                             --query "Reservations[0].Instances[0].Tags[?Key=='Name'].Value" \
                                             --output text)
+export INSTANCE_NAME
 
 # Connect to tailscale
 if [ "$CONNECT_TO_TAILSCALE" = "true" ]; then
@@ -62,12 +76,13 @@ fi
 mkdir /data/st-sync/config -p
 chown 1000:1000 /data/st-sync/ -R
 
+S3_BUCKET_NAME=$(aws ssm get-parameter  --name "/${RESOURCE_NAME}/${ENVIRONMENT}/s3_bucket_name" \
+                                    --with-decryption \
+                                    --query "Parameter.Value" \
+                                    --output text)
+
 if [ "$CREATE_CONFIG" = "false" ]; then
     echo "Grabbing config from ssm and s3"
-    S3_BUCKET_NAME=$(aws ssm get-parameter  --name "/${RESOURCE_NAME}/${ENVIRONMENT}/s3_bucket_name" \
-                                        --with-decryption \
-                                        --query "Parameter.Value" \
-                                        --output text)
     aws ssm get-parameter   --name "/${RESOURCE_NAME}/${ENVIRONMENT}/config/cert.pem" \
                             --with-decryption \
                             --query "Parameter.Value" \
@@ -79,18 +94,9 @@ if [ "$CREATE_CONFIG" = "false" ]; then
     aws s3 cp "s3://${S3_BUCKET_NAME}/artifacts/${ENVIRONMENT}/config.xml" /data/st-sync/config/config.xml
 fi
 
-docker run -d   --name syncthing \
-                -h "$HOST_NAME" \
-                -p 8384:8384 -p 22000:22000/tcp -p 22000:22000/udp \
-                -v /data/st-sync:/var/syncthing \
-                -e PUID=1000 \
-                -e PGID=1000 \
-                --restart unless-stopped \
-                --log-driver=awslogs \
-                --log-opt awslogs-region=eu-west-1 \
-                --log-opt awslogs-group="/aws/ec2/$RESOURCE_NAME/$ENVIRONMENT" \
-                --log-opt awslogs-multiline-pattern='^(INFO|DEBUG|WARN|ERROR|CRITICAL)' \
-                syncthing/syncthing 
+aws s3 cp "s3://${S3_BUCKET_NAME}/artifacts/${ENVIRONMENT}/docker-compose.yml" .
+
+docker compose up -d
 
 echo "Sleeping for 5 seconds to allow the container to be configured..." && sleep 5
 

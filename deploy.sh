@@ -35,6 +35,8 @@ export TF_VAR_s3_bucket
 TF_VAR_aws_region=$(aws configure get region --profile default)
 export TF_VAR_aws_region
 
+aws s3 cp ./../scripts/docker-compose.yml "s3://${TF_VAR_s3_bucket}/artifacts/${TF_VAR_environment}/"
+
 # run terraform commands
 terraform init  -reconfigure \
                 -backend-config="bucket=${TF_VAR_s3_bucket}" \
