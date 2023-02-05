@@ -90,7 +90,7 @@ Syncthing EC2 Instance Information:
 {
   "deviceID": "MFZWI3D-BONSGYC-YLTMRWG-C43ENR5-QXGZDMM-FZWI3DP-BONSGYY-LTMRWAD",
   "name": "syncthing-ec2",
-  "public_ip": "1.2.3.4"
+  "endpoint": "1.2.3.4"
 }
 To connect to the syncthing web gui visit: https://1.2.3.4:8384
 ```
