@@ -1,0 +1,22 @@
+version: '3.3'
+services:
+    syncthing:
+        container_name: syncthing
+        hostname: $INSTANCE_NAME
+        ports:
+            - '8384:8384'
+            - '22000:22000/tcp'
+            - '22000:22000/udp'
+        volumes:
+            - '/data/st-sync:/var/syncthing'
+        environment:
+            - PUID=1000
+            - PGID=1000
+        restart: unless-stopped
+        logging:
+            driver: awslogs
+            options: 
+                awslogs-region: $AWS_REGION
+                awslogs-group: /aws/ec2/$RESOURCE_NAME/$ENVIRONMENT
+                awslogs-multiline-pattern: ^(INFO|DEBUG|WARN|ERROR|CRITICAL)
+        image: syncthing/syncthing
