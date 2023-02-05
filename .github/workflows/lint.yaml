@@ -25,7 +25,7 @@ jobs:
           fail_on_error: true
 
   lint-docker-compose:
-    name: Lint Bash scripts
+    name: Lint Docker Compose scripts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
